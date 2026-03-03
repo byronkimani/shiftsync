@@ -1,0 +1,7 @@
+/* Reset Vite defaults that break the app layout */
+#root {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
