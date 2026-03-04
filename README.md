@@ -105,6 +105,14 @@ The database has been seeded with test accounts. To "log in" as one of these rol
    ```
    The API will be available at `http://localhost:3000` and the web app at `http://localhost:5173`.
 
+## Technical Decisions & Challenges Resolved
+
+1. **Robust Timezone Architecture:** Coordinating shifts across locations in varying timezones is notoriously difficult. To solve this, all dates and times are stored natively in UTC within the PostgreSQL database. The conversion to local "wall-clock" time strictly happens on the frontend client at render-time, using `date-fns-tz` relative to the `timezone` property (e.g. `America/Los_Angeles`) defined on each Location record. This categorically eliminates daylight savings drift and server timezone bugs.
+2. **Application-Layer Constraint Engine:** Validating shift constraints (like preventing overlapping shifts, enforcing 10-hour rest gaps, and checking max daily hours) using SQL triggers is brittle and difficult to test. Instead, we implemented a dedicated `ConstraintEngine` in TypeScript. This service executes all complex business rules within a shared database transaction before committing assignments, enabling us to return rich, human-readable UI violations and staff suggestions.
+3. **Stateless Real-Time Updates:** While WebSockets represent the gold standard for real-time collaboration, introducing Socket.io or Redis creates significant infrastructure complexity. We opted for a resilient short-polling strategy using React Query's `refetchInterval`. A lightweight `/api/poll/` endpoint checks aggregate timestamps and counts every 5 seconds, pulling down heavy payloads only when the schema version actually increments.
+4. **Optimistic UI Mutations:** React Query's `onMutate` cache manipulation is heavily utilized across the frontend (such as when marking notifications read, or approving swaps). This allows the application to instantly reflect state changes for a snappy UX, while safely rolling back the interface if the backend request eventually fails.
+5. **Immutable Audit Trails:** For compliance, the Audit Log system strictly utilizes append-only inserts. State changes are captured as JSONB `before_state` and `after_state` snapshots directly on the log, allowing the UI to render precise visual diffs of shift assignment histories without requiring complex temporal table joins.
+
 ## Assumptions Made (Intentional Ambiguities)
 
 - **Overnight Shifts:** Validity of shift assignment times during midnight crossovers is simplified by checking the start time against the employee's availability window for that originating day.
