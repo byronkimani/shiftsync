@@ -40,7 +40,6 @@ export default function SchedulePage() {
         refetchInterval: 5000,
     });
 
-    const lastUpdatedAt = pollData?.lastUpdatedAt;
 
     // 3. Fetch the actual shifts
     const { data = [], isLoading, dataUpdatedAt } = useQuery<any[]>({
