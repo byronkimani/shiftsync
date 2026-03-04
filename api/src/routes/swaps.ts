@@ -77,6 +77,22 @@ swapsRouter.post('/swap-requests', requireAuth, async (req, res) => {
         targetUserId = tgtAssignmentRow.userId;
     }
 
+    if (type === 'drop') {
+      const hoursUntilShift = shiftStart.diff(now, 'hours').hours;
+      if (hoursUntilShift < 24) {
+        return res.status(422).json({ error: { code: 'BAD_REQUEST', message: 'Drop requests require at least 24 hours notice' } });
+      }
+    }
+
+    // Check maximum 3 pending requests limit
+    const existingPending = await db.select({ id: swapRequests.id })
+       .from(swapRequests)
+       .where(and(eq(swapRequests.requesterId, userId), eq(swapRequests.status, 'pending')));
+       
+    if (existingPending.length >= 3) {
+       return res.status(422).json({ error: { code: 'BAD_REQUEST', message: 'You have reached the limit of 3 pending requests' } });
+    }
+
     const [newReq] = await db.insert(swapRequests).values({
         type,
         requesterAssignmentId,
@@ -86,6 +102,14 @@ swapsRouter.post('/swap-requests', requireAuth, async (req, res) => {
         status: 'pending',
         updatedAt: new Date()
     }).returning();
+
+    if (targetUserId) {
+        await NotificationService.notify(
+            targetUserId, 
+            'swap_request_received', 
+            `You have received a new swap request from a peer.`
+        );
+    }
 
     res.status(201).json({ data: newReq });
   } catch (error) {
@@ -193,6 +217,43 @@ swapsRouter.patch('/swap-requests/:id/peer', requireAuth, async (req, res) => {
     }
 });
 
+swapsRouter.post('/swap-requests/:id/withdraw', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { userId } = req.auth!;
+        
+        const swapReq = await db.query.swapRequests.findFirst({ where: eq(swapRequests.id, id as string) });
+        if (!swapReq) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Request not found' } });
+
+        if (swapReq.requesterId !== userId) {
+            return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Only the requester can withdraw this request' } });
+        }
+
+        if (swapReq.status !== 'pending' && swapReq.status !== 'accepted') {
+            return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Request cannot be withdrawn in its current state' } });
+        }
+
+        const [updated] = await db.update(swapRequests)
+           .set({ status: 'cancelled', cancellationReason: 'requester_withdrew', updatedAt: new Date(), resolvedAt: new Date() })
+           .where(eq(swapRequests.id, id as string))
+           .returning();
+
+        // If it was already accepted by target, notify them it was withdrawn
+        if (swapReq.status === 'accepted' && swapReq.targetId) {
+            await NotificationService.notify(
+                swapReq.targetId,
+                'swap_withdrawn',
+                'The requester has withdrawn their swap request.'
+            );
+        }
+
+        res.json({ data: updated });
+    } catch (error) {
+        console.error('POST /swap-requests/:id/withdraw error:', error);
+        res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to withdraw request' } });
+    }
+});
+
 const managerActionSchema = z.object({
     action: z.enum(['approve', 'reject']),
     reason: z.string().optional()
@@ -274,14 +335,14 @@ swapsRouter.patch('/swap-requests/:id/manager', requireRole('admin', 'manager'),
 
             // Engine check 1: Target User taking Requester Shift
             const check1 = await EngineService.evaluateConstraints(tgtAssignmentRow.userId, swapReq.requesterAssignment.shiftId);
-            if (!check1.eligible) {
-                return res.status(400).json({ error: { code: 'CONSTRAINT_VIOLATION', message: 'Target user is not eligible for requester shift', details: check1.reasons }});
+            if (!check1.valid) {
+                return res.status(400).json({ error: { code: 'CONSTRAINT_VIOLATION', message: 'Target user is not eligible for requester shift', details: check1.violations }});
             }
 
             // Engine check 2: Requester User taking Target Shift
             const check2 = await EngineService.evaluateConstraints(swapReq.requesterId, tgtAssignmentRow.shiftId);
-            if (!check2.eligible) {
-                return res.status(400).json({ error: { code: 'CONSTRAINT_VIOLATION', message: 'Requester user is not eligible for target shift', details: check2.reasons }});
+            if (!check2.valid) {
+                return res.status(400).json({ error: { code: 'CONSTRAINT_VIOLATION', message: 'Requester user is not eligible for target shift', details: check2.violations }});
             }
 
             // Transaction: Swap the userIds on the assignments

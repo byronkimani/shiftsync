@@ -3,9 +3,10 @@ import { ShiftCard } from './ShiftCard';
 import { format, addDays, startOfWeek } from 'date-fns';
 import { useWindowSize } from 'react-use';
 import clsx from 'clsx';
-// import DayView from './DayView';
+import DayView from './DayView';
+import { toZonedTime } from 'date-fns-tz';
 
-export default function ScheduleGrid({ shifts, activeWeekStart }: { shifts: any[], locationId: string, activeWeekStart: Date }) {
+export default function ScheduleGrid({ shifts, locationId, activeWeekStart }: { shifts: any[], locationId: string, activeWeekStart: Date }) {
     const { width } = useWindowSize();
 
     // For real implementation: we'd fetch the location timezone from api.locations.getById(locationId).timezone
@@ -25,7 +26,7 @@ export default function ScheduleGrid({ shifts, activeWeekStart }: { shifts: any[
 
     // Wait for DayView
     if (width < 768) {
-        return <div className="p-4 bg-white rounded shadow text-center text-sm font-medium text-blue-600">Mobile DayView rendering...</div>;
+        return <DayView shifts={shifts} locationId={locationId} activeWeekStart={activeWeekStart} />;
     }
 
     const columnsVisible = width >= 1024 ? 7 : 3;
@@ -86,9 +87,11 @@ export default function ScheduleGrid({ shifts, activeWeekStart }: { shifts: any[
                     {weekDayDates.slice(0, columnsVisible).map((date, i) => {
                         // Filter shifts mapping exactly to this Day column comparing the YYYY-MM-DD
                         const dayStr = format(date, 'yyyy-MM-dd');
-                        // For this, we assume shift dates correspond mostly to the local timezone calendar day 
-                        // (Proper implementation uses toZonedTime on each shift before filtering)
-                        const dayShifts = shifts.filter(s => s.startUtc.includes(dayStr));
+                        // For this, we use toZonedTime to see if the shift's local start falls on this specific date.
+                        const dayShifts = shifts.filter(s => {
+                            const localDate = toZonedTime(new Date(s.startUtc), locationTimezone);
+                            return format(localDate, 'yyyy-MM-dd') === dayStr;
+                        });
 
                         return (
                             <div key={i} className="relative border-r border-gray-100 pt-0 hover:bg-gray-50/50 transition-colors">

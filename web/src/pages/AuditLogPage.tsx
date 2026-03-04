@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
 import { useUIStore } from '../stores/uiStore';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { Shield, Download, FileJson } from 'lucide-react';
 import clsx from 'clsx';
 import DiffPanel from '../components/audit/DiffPanel';
@@ -9,58 +11,50 @@ export default function AuditLogPage() {
     const locationId = useUIStore(s => s.selectedLocationId);
 
     const [actionFilter, setActionFilter] = useState<string>('all');
+    const [entityFilter, setEntityFilter] = useState<string>('all');
     const [selectedLog, setSelectedLog] = useState<any | null>(null);
 
-    // Seed mock data for audit logs
-    const seedLogs = [
-        {
-            id: '1',
-            timestamp: new Date().toISOString(),
-            actorName: 'Admin Guy',
-            action: 'CREATED',
-            entityType: 'SHIFT',
-            summary: 'Created shift for Front Desk at 9:00 AM',
-            oldState: null,
-            newState: { locationId, role: 'Front Desk', startTime: '09:00', endTime: '17:00' }
-        },
-        {
-            id: '2',
-            timestamp: new Date(Date.now() - 3600000).toISOString(),
-            actorName: 'Manager Jane',
-            action: 'UPDATED',
-            entityType: 'SHIFT_ASSIGNMENT',
-            summary: 'Reassigned John Doe to shift',
-            oldState: { assigneeId: null },
-            newState: { assigneeId: 'user_123' }
-        },
-        {
-            id: '3',
-            timestamp: new Date(Date.now() - 7200000).toISOString(),
-            actorName: 'Admin Guy',
-            action: 'PUBLISHED',
-            entityType: 'SCHEDULE',
-            summary: 'Published schedule for week of Mar X',
-            oldState: { status: 'draft' },
-            newState: { status: 'published' }
+    // Default to last 30 days
+    const now = new Date();
+    const [fromDate] = useState(subDays(now, 30).toISOString());
+    const [toDate] = useState(now.toISOString());
+
+    const { data: rawLogs = [], isLoading } = useQuery({
+        queryKey: ['audit-logs', locationId, fromDate, toDate],
+        queryFn: () => api.audit.export(fromDate, toDate, locationId as string).then(res => res.data),
+        enabled: !!locationId,
+    });
+
+    const logs = rawLogs.filter((l: any) => {
+        const actionMatch = actionFilter === 'all' || l.action === actionFilter;
+        const entityMatch = entityFilter === 'all' || l.entityType === entityFilter;
+        return actionMatch && entityMatch;
+    });
+
+    const handleExport = async () => {
+        if (!locationId) return;
+        try {
+            const response = await api.audit.exportCsv('history', locationId, fromDate, toDate);
+            const url = window.URL.createObjectURL(new Blob([response as any]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `audit_export_${format(now, 'yyyyMMdd')}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+        } catch (err) {
+            console.error('Export failed', err);
+            alert('Failed to export CSV. Please try again.');
         }
-    ];
-
-    // Ideally, we fetch from API:
-    // const { data: logs = [], isLoading } = useQuery({ ... });
-    const logs = seedLogs.filter(l => actionFilter === 'all' || l.action === actionFilter);
-    const isLoading = false;
-
-    const handleExport = () => {
-        // Typically call api.audit.exportCsv()
-        alert('Exporting CSV...');
     };
 
     const getActionColor = (action: string) => {
         switch (action) {
-            case 'CREATED': return 'text-green-700 bg-green-100 border-green-200';
-            case 'UPDATED': return 'text-blue-700 bg-blue-100 border-blue-200';
-            case 'DELETED': return 'text-red-700 bg-red-100 border-red-200';
-            case 'PUBLISHED': return 'text-teal-700 bg-teal-100 border-teal-200';
+            case 'create': return 'text-green-700 bg-green-100 border-green-200';
+            case 'update': return 'text-blue-700 bg-blue-100 border-blue-200';
+            case 'delete':
+            case 'cancel': return 'text-red-700 bg-red-100 border-red-200';
+            case 'publish': return 'text-teal-700 bg-teal-100 border-teal-200';
             default: return 'text-gray-700 bg-gray-100 border-gray-200';
         }
     };
@@ -83,10 +77,22 @@ export default function AuditLogPage() {
                         className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                         <option value="all">All Actions</option>
-                        <option value="CREATED">Created</option>
-                        <option value="UPDATED">Updated</option>
-                        <option value="PUBLISHED">Published</option>
-                        <option value="DELETED">Deleted</option>
+                        <option value="create">Created</option>
+                        <option value="update">Updated</option>
+                        <option value="publish">Published</option>
+                        <option value="delete">Deleted</option>
+                        <option value="cancel">Cancelled</option>
+                    </select>
+
+                    <select
+                        value={entityFilter}
+                        onChange={e => setEntityFilter(e.target.value)}
+                        className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                        <option value="all">All Entities</option>
+                        <option value="shift">Shift</option>
+                        <option value="shift_assignment">Assignment</option>
+                        <option value="swap_request">Swap Request</option>
                     </select>
 
                     <button
@@ -130,7 +136,7 @@ export default function AuditLogPage() {
                                         {format(new Date(log.timestamp), 'MMM d, yyyy HH:mm:ss')}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-900">
-                                        {log.actorName}
+                                        {log.actor?.name || 'System'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={clsx(
@@ -144,7 +150,7 @@ export default function AuditLogPage() {
                                         {log.entityType}
                                     </td>
                                     <td className="px-6 py-4 text-gray-800">
-                                        {log.summary}
+                                        {log.entityType} ID: {log.entityId}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right">
                                         <button
@@ -176,8 +182,8 @@ export default function AuditLogPage() {
                         onClick={() => setSelectedLog(null)}
                     />
                     <DiffPanel
-                        oldState={selectedLog.oldState}
-                        newState={selectedLog.newState}
+                        oldState={selectedLog.beforeState}
+                        newState={selectedLog.afterState}
                         onClose={() => setSelectedLog(null)}
                     />
                 </>

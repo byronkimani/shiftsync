@@ -1,6 +1,9 @@
-import { ClerkProvider, useUser } from '@clerk/clerk-react';
+import { ClerkProvider, useUser, useAuth, useClerk } from '@clerk/clerk-react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
+import { useEffect } from 'react';
+import { apiClient } from './lib/api';
 
 import { AuthGuard } from './components/auth/AuthGuard';
 import { RoleGuard } from './components/auth/RoleGuard';
@@ -24,7 +27,42 @@ import NotificationCenterPage from './pages/NotificationCenterPage';
 import UserSettingsPage from './pages/UserSettingsPage';
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const queryClient = new QueryClient();
+
+function ApiInterceptorProvider({ children }: { children: React.ReactNode }) {
+  const { getToken } = useAuth();
+  const { signOut } = useClerk();
+
+  useEffect(() => {
+    const requestInterceptor = apiClient.interceptors.request.use(async (config) => {
+      try {
+        const token = await getToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (e) {
+        console.warn("Error getting Clerk token", e);
+      }
+      return config;
+    });
+
+    const responseInterceptor = apiClient.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          signOut();
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      apiClient.interceptors.request.eject(requestInterceptor);
+      apiClient.interceptors.response.eject(responseInterceptor);
+    };
+  }, [getToken, signOut]);
+
+  return <>{children}</>;
+}
 
 function RootRedirect() {
   const { user, isLoaded } = useUser();
@@ -58,7 +96,7 @@ export default function App() {
             <Route path="/sign-up/*" element={<SignUpPage />} />
 
             {/* Protected App Shell */}
-            <Route element={<AuthGuard><AppShell /></AuthGuard>}>
+            <Route element={<AuthGuard><ApiInterceptorProvider><AppShell /></ApiInterceptorProvider></AuthGuard>}>
 
               {/* Intelligent Root Routing */}
               <Route path="/" element={<RootRedirect />} />

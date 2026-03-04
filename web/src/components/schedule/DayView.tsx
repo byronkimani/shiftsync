@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { format, addDays, startOfWeek } from 'date-fns';
 import { useSwipeable } from 'react-swipeable';
 import clsx from 'clsx';
+import { toZonedTime } from 'date-fns-tz';
 // import { ShiftCardList } from './ShiftCardList'; // We'll render shifts linearly here
 
 export default function DayView({ shifts, activeWeekStart }: { shifts: any[], locationId: string, activeWeekStart: Date }) {
@@ -14,9 +15,13 @@ export default function DayView({ shifts, activeWeekStart }: { shifts: any[], lo
 
     const activeDate = weekDayDates[activeDayIndex];
     const activeDateStr = format(activeDate, 'yyyy-MM-dd');
+    const locationTimezone = "America/Los_Angeles";
 
-    // Filter shifts to the active day string trivially
-    const dayShifts = shifts.filter(s => s.startUtc.includes(activeDateStr));
+    // Filter shifts to the active day string using Timezone
+    const dayShifts = shifts.filter(s => {
+        const localDate = toZonedTime(new Date(s.startUtc), locationTimezone);
+        return format(localDate, 'yyyy-MM-dd') === activeDateStr;
+    });
 
     const handlers = useSwipeable({
         onSwipedLeft: () => setActiveDayIndex(i => Math.min(i + 1, 6)),

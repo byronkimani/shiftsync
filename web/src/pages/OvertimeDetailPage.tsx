@@ -1,18 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useUIStore } from '../stores/uiStore';
-import { startOfWeek, endOfWeek, format } from 'date-fns';
-import { ArrowLeft, Download, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { startOfWeek, endOfWeek, addWeeks, subWeeks, format } from 'date-fns';
+import { ArrowLeft, Download, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
+import OvertimeChart from '../components/analytics/OvertimeChart';
 
 export default function OvertimeDetailPage() {
     const locationId = useUIStore(s => s.selectedLocationId);
 
-    // Default to current week
-    const now = new Date();
-    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
-    const currentWeekEnd = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+    const [activeWeekStart, setActiveWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+
+    const currentWeekStart = activeWeekStart.toISOString();
+    const currentWeekEnd = endOfWeek(activeWeekStart, { weekStartsOn: 1 }).toISOString();
+
+    const nextWeek = () => setActiveWeekStart(d => addWeeks(d, 1));
+    const prevWeek = () => setActiveWeekStart(d => subWeeks(d, 1));
 
     const { data: overtimeData = [], isLoading } = useQuery({
         queryKey: ['analytics-overtime', locationId, currentWeekStart],
@@ -23,6 +28,7 @@ export default function OvertimeDetailPage() {
     const handleExport = async () => {
         if (!locationId) return;
         try {
+            const now = new Date();
             const response = await api.audit.exportCsv('overtime', locationId, currentWeekStart, currentWeekEnd);
             // Assuming response is a blob, create download link
             const url = window.URL.createObjectURL(new Blob([response as any]));
@@ -53,16 +59,33 @@ export default function OvertimeDetailPage() {
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Overtime Details</h1>
                         <p className="text-sm font-medium text-gray-500 mt-1">
-                            Breakdown of staff hours for the week of {format(new Date(currentWeekStart), 'MMM d, yyyy')}
+                            Breakdown of staff hours for the week of {format(activeWeekStart, 'MMM d, yyyy')}
                         </p>
                     </div>
-                    <button
-                        onClick={handleExport}
-                        className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm"
-                    >
-                        <Download className="w-4 h-4" /> Export CSV
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center bg-white border border-gray-300 rounded-lg p-1 shadow-sm">
+                            <button onClick={prevWeek} className="p-1 hover:bg-gray-100 rounded-md transition-colors">
+                                <ChevronLeft className="w-5 h-5 text-gray-600" />
+                            </button>
+                            <span className="px-4 text-sm font-semibold text-gray-800 w-36 text-center">
+                                {format(activeWeekStart, 'MMM d, yyyy')}
+                            </span>
+                            <button onClick={nextWeek} className="p-1 hover:bg-gray-100 rounded-md transition-colors">
+                                <ChevronRight className="w-5 h-5 text-gray-600" />
+                            </button>
+                        </div>
+                        <button
+                            onClick={handleExport}
+                            className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                        >
+                            <Download className="w-4 h-4" /> Export CSV
+                        </button>
+                    </div>
                 </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6 mb-6">
+                <OvertimeChart data={overtimeData} />
             </div>
 
             <div className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-x-auto">

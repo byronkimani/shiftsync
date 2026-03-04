@@ -64,6 +64,55 @@ The database has been seeded with test accounts. To "log in" as one of these rol
 1. In the Clerk Dashboard, go to **Webhooks** and add an endpoint: `{YOUR_RAILWAY_URL}/api/webhooks/clerk`. Subscribe to `user.created` and `user.updated`.
 2. Ensure `{YOUR_RAILWAY_URL}` and `{YOUR_VERCEL_URL}` are added to allowed CORS origins in your Clerk instance settings.
 
+## Tech Stack
+- **Backend:** Node.js, Express, TypeScript
+- **Database:** PostgreSQL, Drizzle ORM
+- **Frontend:** React, Vite, Tailwind CSS, React Query, Zustand
+- **Authentication:** Clerk
+- **Communications:** Resend (Email)
+
+## Local Development Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repo-url>
+   cd shiftsync
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Set up Environment Variables:**
+   Copy the provided `.env.example` file to create a `.env` file at the root or within the respective `/api` and `/web` directories. Ensure your local PostgreSQL connection string, Resend, and Clerk keys are configured.
+
+4. **Database Setup:**
+   Run the migrations and seed data script:
+   ```bash
+   cd api
+   npm run db:migrate
+   npm run db:seed
+   ```
+
+5. **Start Development Servers (Concurrent):**
+   ```bash
+   # Terminal 1 - Backend
+   cd api && npm run dev
+
+   # Terminal 2 - Frontend
+   cd web && npm run dev
+   ```
+   The API will be available at `http://localhost:3000` and the web app at `http://localhost:5173`.
+
+## Assumptions Made (Intentional Ambiguities)
+
+- **Overnight Shifts:** Validity of shift assignment times during midnight crossovers is simplified by checking the start time against the employee's availability window for that originating day.
+- **Availability Precedence:** One-off availability exceptions take absolute precedence over recurring weekly availability windows on any overlapping date.
+- **Hard Constraints:** The system implements hard blocks forbidding a user from being assigned to work more than 12 hours in a single calendar day, or working a 7th consecutive day.
+- **Timezone Abstraction:** Time metrics are stored natively in UTC and are formatted strictly on the client frontend relative to the `timezone` property of the `location` record to prevent daylight savings drift.
+- **Soft Deletion:** Certification removal sets an `is_active = FALSE` flag instead of wiping records, ensuring historical data integrity.
+
 ## Known Limitations
 - The realtime polling approach is used over WebSockets for simplicity in the current MVP phase.
 - Some specific edge cases around highly overlapping timezone exceptions are handled gracefully but not extensively battle-tested.

@@ -1,18 +1,21 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { api } from '../lib/api';
 import { addWeeks, subWeeks, format, startOfWeek, endOfWeek } from 'date-fns';
 import { ChevronLeft, ChevronRight, Plus, CheckCircle2 } from 'lucide-react';
 import clsx from 'clsx';
 import ScheduleGrid from '../components/schedule/ScheduleGrid';
+import { WeeklyHoursBar } from '../components/schedule/WeeklyHoursBar';
 import CreateShiftModal from '../components/schedule/CreateShiftModal';
 import PublishConfirmModal from '../components/schedule/PublishConfirmModal';
+import AssignStaffPanel from '../components/schedule/AssignStaffPanel';
 
 export default function SchedulePage() {
-    const { selectedLocationId, setSelectedLocationId, activeWeekStart, setActiveWeekStart } = useUIStore();
+    const { selectedLocationId, setSelectedLocationId, activeWeekStart, setActiveWeekStart, selectedAssignShiftId, setSelectedAssignShiftId } = useUIStore();
     const [createModalOpen, setCreateModalOpen] = useState(false);
     const [publishModalOpen, setPublishModalOpen] = useState(false);
+    const queryClient = useQueryClient();
 
     // 1. Fetch locations for the dropdown
     const { data: locData = [] } = useQuery<any[]>({
@@ -40,13 +43,14 @@ export default function SchedulePage() {
     const lastUpdatedAt = pollData?.lastUpdatedAt;
 
     // 3. Fetch the actual shifts
-    // We include lastUpdatedAt in the queryKey so it auto-invalidates when the poll detects a change!
-    const { data = [], isLoading } = useQuery<any[]>({
-        queryKey: ['shifts', selectedLocationId, formattedWeekStart, lastUpdatedAt],
+    const { data = [], isLoading, dataUpdatedAt } = useQuery<any[]>({
+        queryKey: ['shifts', selectedLocationId, formattedWeekStart],
         queryFn: () => (api.shifts.getWeek(selectedLocationId!, formattedWeekStart) as unknown) as Promise<any[]>,
         enabled: !!selectedLocationId,
     });
     const shifts = data;
+
+    const isStaleData = !!(pollData?.lastUpdatedAt && dataUpdatedAt && new Date(pollData.lastUpdatedAt).getTime() > dataUpdatedAt);
 
     const draftShifts = shifts.filter((s: any) => s.status === 'draft');
     const hasDrafts = draftShifts.length > 0;
@@ -76,7 +80,19 @@ export default function SchedulePage() {
                     <div className="flex items-center bg-gray-100 rounded-lg p-1">
                         <button onClick={handlePrevWeek} className="p-1 hover:bg-white rounded shadow-sm transition-all"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
                         <span className="px-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{weekDisplay}</span>
-                        <button onClick={handleNextWeek} className="p-1 hover:bg-white rounded shadow-sm transition-all"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+                        <button
+                            onClick={handleNextWeek}
+                            onMouseEnter={() => {
+                                const nextWeekStr = addWeeks(activeWeekStart, 1).toISOString();
+                                queryClient.prefetchQuery({
+                                    queryKey: ['shifts', selectedLocationId, nextWeekStr],
+                                    queryFn: () => (api.shifts.getWeek(selectedLocationId!, nextWeekStr) as unknown) as Promise<any[]>
+                                });
+                            }}
+                            className="p-1 hover:bg-white rounded shadow-sm transition-all"
+                        >
+                            <ChevronRight className="w-5 h-5 text-gray-600" />
+                        </button>
                     </div>
                 </div>
 
@@ -123,8 +139,20 @@ export default function SchedulePage() {
                         Please select a location
                     </div>
                 ) : (
-                    <div className="p-6">
+                    <div className="p-6 h-full flex flex-col relative space-y-4">
+                        {isStaleData && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between shadow-sm animate-fade-in z-10 w-full shrink-0">
+                                <div className="text-sm text-amber-800 font-medium">New updates available for the schedule.</div>
+                                <button
+                                    onClick={() => queryClient.invalidateQueries({ queryKey: ['shifts', selectedLocationId] })}
+                                    className="text-amber-700 bg-amber-100 px-3 py-1.5 rounded font-bold hover:bg-amber-200 text-xs transition-colors"
+                                >
+                                    Refresh Schedule
+                                </button>
+                            </div>
+                        )}
                         <ScheduleGrid shifts={shifts} locationId={selectedLocationId!} activeWeekStart={activeWeekStart} />
+                        <WeeklyHoursBar locationId={selectedLocationId!} weekStart={activeWeekStart} />
                     </div>
                 )}
             </main>
@@ -132,6 +160,14 @@ export default function SchedulePage() {
             {/* Modals */}
             {createModalOpen && <CreateShiftModal locationId={selectedLocationId!} onClose={() => setCreateModalOpen(false)} />}
             {publishModalOpen && <PublishConfirmModal shifts={draftShifts} locationId={selectedLocationId!} onClose={() => setPublishModalOpen(false)} />}
+            {selectedAssignShiftId && (
+                <AssignStaffPanel
+                    shift={shifts.find((s: any) => s.id === selectedAssignShiftId) || {}}
+                    locationId={selectedLocationId!}
+                    locationTimezone="America/Los_Angeles"
+                    onClose={() => setSelectedAssignShiftId(null)}
+                />
+            )}
         </div>
     );
 }

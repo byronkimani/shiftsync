@@ -14,6 +14,7 @@ interface ShiftCardProps {
 
 export function ShiftCard({ shift, locationTimezone }: ShiftCardProps) {
     const staleShiftIds = useUIStore(s => s.staleShiftIds);
+    const setSelectedAssignShiftId = useUIStore(s => s.setSelectedAssignShiftId);
     const isStale = staleShiftIds.has(shift.id);
 
     // Convert UTC string to Date, then to Location's Timezone Date for rendering
@@ -61,8 +62,7 @@ export function ShiftCard({ shift, locationTimezone }: ShiftCardProps) {
             )}
             style={{ top, height }}
             onClick={() => {
-                // Future AssignStaffModal trigger
-                console.log("Clicked shift", shift.id);
+                setSelectedAssignShiftId(shift.id);
             }}
         >
             {/* Header Bar */}

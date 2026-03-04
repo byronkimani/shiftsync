@@ -124,7 +124,7 @@ analyticsRouter.get('/analytics/fairness', requireRole('admin', 'manager'), asyn
           eligibleStaffMap.set(record.userId, {
               userId: record.userId,
               name: record.user.name,
-              actual: 0
+              premiumShiftsWorked: 0
           });
       }
 
@@ -150,7 +150,7 @@ analyticsRouter.get('/analytics/fairness', requireRole('admin', 'manager'), asyn
         for (const assignment of shift.assignments) {
           totalPremiumShifts++;
           if (eligibleStaffMap.has(assignment.userId)) {
-             eligibleStaffMap.get(assignment.userId).actual++;
+             eligibleStaffMap.get(assignment.userId).premiumShiftsWorked++;
           }
         }
       }
@@ -158,15 +158,16 @@ analyticsRouter.get('/analytics/fairness', requireRole('admin', 'manager'), asyn
       const expectedSharePerPerson = eligibleStaffCount > 0 ? totalPremiumShifts / eligibleStaffCount : 0;
       
       const staffResults = Array.from(eligibleStaffMap.values()).map(staff => {
-         const deviation = staff.actual - expectedSharePerPerson;
-         // Flag if deviation is > 20% of expected (if expected > 0)
-         const isFlagged = expectedSharePerPerson > 0 ? (Math.abs(deviation / expectedSharePerPerson) > 0.20) : false;
+         const deviation = staff.premiumShiftsWorked - expectedSharePerPerson;
+         const deviationPct = expectedSharePerPerson > 0 ? (deviation / expectedSharePerPerson) * 100 : 0;
+         // Flag if deviation is > 20% of expected (if expected > 0), typically negative for underserved
+         const flagged = expectedSharePerPerson > 0 ? (Math.abs(deviation / expectedSharePerPerson) > 0.20) : false;
          
          return {
              ...staff,
-             expected: expectedSharePerPerson,
              deviation,
-             isFlagged
+             deviationPct,
+             flagged
          };
       });
   
@@ -214,10 +215,11 @@ analyticsRouter.get('/analytics/distribution', requireRole('admin', 'manager'), 
 
       const distributionMap = new Map();
       for (const record of activeStaffRecords) {
+          const rawDesired = record.user.desiredHoursPerWeek;
           distributionMap.set(record.userId, {
               userId: record.userId,
               name: record.user.name,
-              desiredHours: parseFloat(record.user.desiredHoursPerWeek?.toString() || '0'),
+              desiredHours: rawDesired != null ? parseFloat(rawDesired.toString()) : null,
               scheduledHours: 0,
               delta: 0
           });
@@ -249,7 +251,7 @@ analyticsRouter.get('/analytics/distribution', requireRole('admin', 'manager'), 
       const staffResults = Array.from(distributionMap.values()).map(staff => {
          return {
              ...staff,
-             delta: staff.scheduledHours - staff.desiredHours
+             delta: staff.desiredHours != null ? staff.scheduledHours - staff.desiredHours : null
          };
       });
   

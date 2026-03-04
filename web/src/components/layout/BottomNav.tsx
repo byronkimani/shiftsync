@@ -24,10 +24,9 @@ export function BottomNav() {
     return (
         <div style={{
             position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
-            display: 'flex',
             height: 'var(--bottom-nav-height)',
         }}
-            className="md:hidden"
+            className="flex md:hidden"
         >
             <div style={{
                 width: '100%',

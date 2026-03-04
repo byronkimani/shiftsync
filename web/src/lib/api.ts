@@ -27,6 +27,8 @@ export const api = {
     listStaff: (locationId: string) => apiClient.get(`/users?locationId=${locationId}`),
     getAvailability: (userId: string) => apiClient.get(`/users/${userId}/availability`),
     updateAvailability: (userId: string, data: any) => apiClient.put(`/users/${userId}/availability`, data),
+    addException: (userId: string, data: any) => apiClient.post(`/users/${userId}/availability/exceptions`, data),
+    removeException: (userId: string, exceptionId: string) => apiClient.delete(`/users/${userId}/availability/exceptions/${exceptionId}`),
   },
   locations: {
     list: () => apiClient.get('/locations'),
@@ -45,7 +47,7 @@ export const api = {
     drop: (shiftId: string, userId: string) => apiClient.delete(`/shifts/${shiftId}/assignments/${userId}`),
   },
   engine: {
-    checkEligibility: (shiftId: string, userId: string) => apiClient.get(`/shifts/${shiftId}/eligibility/${userId}`),
+    checkEligibility: (shiftId: string, userId: string) => apiClient.post(`/shifts/${shiftId}/validate-assignment`, { userId }),
   },
   swaps: {
     list: (locationId?: string) => apiClient.get(locationId ? `/swap-requests?locationId=${locationId}` : '/swap-requests'),

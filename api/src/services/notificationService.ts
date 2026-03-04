@@ -5,15 +5,23 @@ import { eq } from 'drizzle-orm';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const EMAIL_TEMPLATES: Record<string, string> = {
+  shift_published: "A Shift Has Been Published",
+  schedule_published: "New Schedule Published",
+  shift_assigned: "You Have a New Shift Assignment",
+  shift_updated: "Shift Details Automatically Updated",
+  shift_cancelled: "Shift Cancelled",
+  shift_dropped: "You Were Dropped From a Shift",
+  swap_request_received: "New Shift Swap Request",
+  swap_accepted: "Swap Request Accepted By Peer",
+  swap_cancelled: "Swap Request Cancelled",
+  swap_withdrawn: "Swap Request Withdrawn",
+  swap_rejected_manager: "Swap Request Rejected by Manager",
+  swap_approved: "Swap Request Approved!",
+  audit_export_ready: "Your Audit Log Export is Ready"
+};
+
 export class NotificationService {
-  /**
-   * Sends an in-app notification and/or email based on user preferences.
-   * 
-   * @param userId The ID of the user to notify
-   * @param type The type/category of the notification (e.g. 'shift_published', 'swap_request_approved')
-   * @param summary A short, readable summary for the in-app bell
-   * @param payload Optional JSON data for the frontend to build links/context
-   */
   static async notify(userId: string, type: string, summary: string, payload: any = {}) {
     try {
       // 1. Fetch user to check preferences
@@ -34,23 +42,20 @@ export class NotificationService {
       }
 
       // 3. Email Notification
-      // We skip sending actual emails to dummy clerk addresses or if Resend isn't configured 
-      // with a verified domain to prevent bounces, but the logic handles it cleanly.
       if (user.notificationEmail && process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.includes('re_dummy')) {
-        // Skip dummy seeded emails
         if (!user.email.endsWith('@example.com')) {
+           const subjectTemplate = EMAIL_TEMPLATES[type] || `ShiftSync: ${summary}`;
            await resend.emails.send({
              from: process.env.RESEND_FROM_EMAIL || 'notifications@shiftsync.app',
              to: user.email,
-             subject: `ShiftSync: ${summary}`,
+             subject: `ShiftSync: ${subjectTemplate}`,
              html: `<p>Hello ${user.name},</p><p>${summary}</p><p>Log in to ShiftSync to view details.</p>`
            });
         }
       }
 
     } catch (error) {
-      console.error('NotificationService error:', error);
-      // We don't want a notification failure to crash the main transaction/route
+      console.error(`NotificationService error sending ${type}:`, error);
     }
   }
 }

@@ -62,7 +62,7 @@ auditRouter.get('/audit-logs/export', requireRole('admin'), async (req, res) => 
             const userId = req.auth!.userId;
             await NotificationService.notify(
                 userId,
-                'export_completed',
+                'audit_export_ready',
                 'Your audit log CSV export is ready for download.',
                 { jobId, downloadUrl: `/api/downloads/${jobId}.csv` } // Fake download URL
             );

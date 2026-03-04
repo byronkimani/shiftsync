@@ -1,22 +1,25 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useUIStore } from '../stores/uiStore';
+import { useState } from 'react';
 import { subWeeks, endOfWeek, format } from 'date-fns';
 import { ArrowLeft, Download, Flag } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
+import FairnessChart from '../components/analytics/FairnessChart';
 
 export default function FairnessReportPage() {
     const locationId = useUIStore(s => s.selectedLocationId);
 
-    // Default to last 4 weeks
+    const [weeksAgo, setWeeksAgo] = useState<number>(4);
+
     const now = new Date();
-    const fourWeeksAgo = subWeeks(now, 4).toISOString();
+    const startDate = subWeeks(now, weeksAgo).toISOString();
     const currentWeekEnd = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
 
     const { data: fairnessData = [], isLoading } = useQuery({
-        queryKey: ['analytics-fairness', locationId, fourWeeksAgo, currentWeekEnd],
-        queryFn: () => api.analytics.fairness(locationId as string, fourWeeksAgo, currentWeekEnd).then(res => res.data),
+        queryKey: ['analytics-fairness', locationId, startDate, currentWeekEnd],
+        queryFn: () => api.analytics.fairness(locationId as string, startDate, currentWeekEnd).then(res => res.data),
         enabled: !!locationId,
     });
 
@@ -25,7 +28,7 @@ export default function FairnessReportPage() {
     const handleExport = async () => {
         if (!locationId) return;
         try {
-            const response = await api.audit.exportCsv('fairness', locationId, fourWeeksAgo, currentWeekEnd);
+            const response = await api.audit.exportCsv('fairness', locationId, startDate, currentWeekEnd);
             const url = window.URL.createObjectURL(new Blob([response as any]));
             const link = document.createElement('a');
             link.href = url;
@@ -54,16 +57,31 @@ export default function FairnessReportPage() {
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Shift Fairness Report</h1>
                         <p className="text-sm font-medium text-gray-500 mt-1">
-                            Distribution of premium/undesirable shifts from {format(new Date(fourWeeksAgo), 'MMM d')} to {format(new Date(currentWeekEnd), 'MMM d, yyyy')}
+                            Distribution of premium/undesirable shifts from {format(new Date(startDate), 'MMM d')} to {format(new Date(currentWeekEnd), 'MMM d, yyyy')}
                         </p>
                     </div>
-                    <button
-                        onClick={handleExport}
-                        className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm"
-                    >
-                        <Download className="w-4 h-4" /> Export CSV
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <select
+                            value={weeksAgo}
+                            onChange={(e) => setWeeksAgo(Number(e.target.value))}
+                            className="bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg px-3 py-2.5 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                            <option value={4}>Last 4 Weeks</option>
+                            <option value={8}>Last 8 Weeks</option>
+                            <option value={12}>Last 12 Weeks</option>
+                        </select>
+                        <button
+                            onClick={handleExport}
+                            className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                        >
+                            <Download className="w-4 h-4" /> Export CSV
+                        </button>
+                    </div>
                 </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-6 mb-6">
+                <FairnessChart data={fairnessData} />
             </div>
 
             <div className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden mb-6 p-4 flex items-center gap-3">

@@ -37,11 +37,11 @@ export function Sidebar() {
     const badge = roleBadgeStyle[role] || roleBadgeStyle.staff;
 
     return (
-        <aside style={{
+        <aside className="hidden md:flex flex-col" style={{
             position: 'fixed', top: 0, left: 0, width: 'var(--sidebar-width)', height: '100vh',
             background: 'linear-gradient(180deg, #0f172a 0%, #1a2744 100%)',
             borderRight: '1px solid rgba(255,255,255,0.06)',
-            display: 'flex', flexDirection: 'column', zIndex: 30,
+            zIndex: 30,
             boxShadow: '4px 0 24px rgba(0,0,0,0.2)'
         }}>
             {/* Logo */}
@@ -111,7 +111,16 @@ export function Sidebar() {
                 >
                     <Bell size={16} />
                     {unreadCount > 0 && (
-                        <span style={{ position: 'absolute', top: '6px', right: '6px', width: '7px', height: '7px', borderRadius: '999px', background: '#ef4444', border: '2px solid #0f172a' }} />
+                        <span style={{
+                            position: 'absolute', top: '-4px', right: '-4px',
+                            padding: '0 4px', height: '16px', minWidth: '16px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            borderRadius: '999px', background: '#ef4444',
+                            color: 'white', fontSize: '10px', fontWeight: 'bold',
+                            border: '2px solid #0f172a'
+                        }}>
+                            {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
                     )}
                 </button>
             </div>

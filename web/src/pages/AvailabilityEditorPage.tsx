@@ -97,22 +97,40 @@ export default function AvailabilityEditorPage() {
         }
     });
 
+    const addExceptionMutation = useMutation({
+        mutationFn: (data: any) => api.users.addException(user?.id as string, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['availability', user?.id] });
+            setNewExcDate('');
+            setNewExcAvailable(false);
+            setNewExcStart(DEFAULT_START);
+            setNewExcEnd(DEFAULT_END);
+        },
+        onError: (err: any) => {
+            alert(err?.response?.data?.message || 'Failed to add exception');
+        }
+    });
+
+    const removeExceptionMutation = useMutation({
+        mutationFn: (id: string) => api.users.removeException(user?.id as string, id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['availability', user?.id] });
+        },
+        onError: (err: any) => {
+            alert(err?.response?.data?.message || 'Failed to remove exception');
+        }
+    });
+
     const handleSave = () => {
         if (!selectedLocationId) return;
 
-        // format payload as expected by Chunk 17 PUT endpoint
+        // format payload as expected by PUT endpoint for regular hours
         const payload = {
             locationId: selectedLocationId,
             regular: weekly.filter(d => d.isAvailable).map(d => ({
                 dayOfWeek: d.dayOfWeek,
                 startTime: d.startTime,
                 endTime: d.endTime
-            })),
-            exceptions: exceptions.map(e => ({
-                date: e.date,
-                available: e.available,
-                startTime: e.available ? e.startTime : null,
-                endTime: e.available ? e.endTime : null
             }))
         };
 
@@ -120,7 +138,7 @@ export default function AvailabilityEditorPage() {
     };
 
     const addException = () => {
-        if (!newExcDate) return;
+        if (!newExcDate || !selectedLocationId) return;
 
         // basic validation
         if (newExcAvailable && newExcStart >= newExcEnd) {
@@ -128,25 +146,23 @@ export default function AvailabilityEditorPage() {
             return;
         }
 
-        const newExc = {
-            id: 'temp-' + Date.now(),
+        const payload = {
+            locationId: selectedLocationId,
             date: newExcDate,
             available: newExcAvailable,
             startTime: newExcAvailable ? newExcStart : null,
             endTime: newExcAvailable ? newExcEnd : null
         };
 
-        setExceptions(prev => [...prev.filter(e => e.date !== newExcDate), newExc].sort((a, b) => a.date.localeCompare(b.date)));
-
-        // reset form
-        setNewExcDate('');
-        setNewExcAvailable(false);
-        setNewExcStart(DEFAULT_START);
-        setNewExcEnd(DEFAULT_END);
+        addExceptionMutation.mutate(payload);
     };
 
-    const removeException = (idOrDate: string) => {
-        setExceptions(prev => prev.filter(e => e.id !== idOrDate && e.date !== idOrDate));
+    const removeException = (exceptionId: string) => {
+        if (exceptionId.startsWith('temp-')) {
+            setExceptions(prev => prev.filter(e => e.id !== exceptionId));
+            return;
+        }
+        removeExceptionMutation.mutate(exceptionId);
     };
 
     const currentLocation = locations.find((l: any) => l.locationId === selectedLocationId)?.location;
@@ -291,10 +307,10 @@ export default function AvailabilityEditorPage() {
                             </div>
                             <button
                                 onClick={addException}
-                                disabled={!newExcDate}
+                                disabled={!newExcDate || addExceptionMutation.isPending}
                                 className="w-full sm:w-auto bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
                             >
-                                <Plus className="w-4 h-4" /> Add Exception
+                                <Plus className="w-4 h-4" /> {addExceptionMutation.isPending ? 'Adding...' : 'Add Exception'}
                             </button>
                         </div>
 
@@ -323,7 +339,8 @@ export default function AvailabilityEditorPage() {
                                             </div>
                                             <button
                                                 onClick={() => removeException(exc.id || exc.date)}
-                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                disabled={removeExceptionMutation.isPending}
+                                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>

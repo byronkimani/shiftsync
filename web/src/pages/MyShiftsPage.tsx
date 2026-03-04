@@ -11,6 +11,18 @@ export default function MyShiftsPage() {
 
     const [swapShift, setSwapShift] = useState<any>(null);
     const [dropShift, setDropShift] = useState<any>(null);
+    const [pendingLimitError, setPendingLimitError] = useState<string | null>(null);
+
+    // Calculate total pending requests across all visible shifts
+    let totalPendingRequests = 0;
+    shifts.forEach((shift: any) => {
+        const myAssignment = shift.assignments?.find((a: any) => a.status === 'assigned');
+        if (myAssignment && shift.swapRequests) {
+            totalPendingRequests += shift.swapRequests.filter(
+                (sr: any) => sr.requesterAssignmentId === myAssignment.id && sr.status === 'pending'
+            ).length;
+        }
+    });
 
     const groupedShifts = shifts.reduce((acc: any, shift: any) => {
         const tz = shift.location?.timezone || 'America/Los_Angeles';
@@ -56,6 +68,14 @@ export default function MyShiftsPage() {
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>upcoming</div>
                 </div>
             </div>
+
+            {/* Error Message */}
+            {pendingLimitError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-700 text-sm">
+                    <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>{pendingLimitError}</span>
+                </div>
+            )}
 
             {/* Shift List */}
             {isLoading ? (
@@ -122,14 +142,28 @@ export default function MyShiftsPage() {
                                                 </div>
                                                 <div className="ss-shift-card-actions">
                                                     <button
-                                                        onClick={() => setSwapShift({ shift, assignmentId })}
+                                                        onClick={() => {
+                                                            if (totalPendingRequests >= 3) {
+                                                                setPendingLimitError("You have reached the maximum of 3 pending requests. Please wait for them to be processed.");
+                                                            } else {
+                                                                setPendingLimitError(null);
+                                                                setSwapShift({ shift, assignmentId });
+                                                            }
+                                                        }}
                                                         disabled={!!pendingRequest}
                                                         className="ss-shift-action-btn swap"
                                                     >
                                                         <ArrowRightLeft size={14} /> Swap
                                                     </button>
                                                     <button
-                                                        onClick={() => setDropShift({ shift, assignmentId })}
+                                                        onClick={() => {
+                                                            if (totalPendingRequests >= 3) {
+                                                                setPendingLimitError("You have reached the maximum of 3 pending requests. Please wait for them to be processed.");
+                                                            } else {
+                                                                setPendingLimitError(null);
+                                                                setDropShift({ shift, assignmentId });
+                                                            }
+                                                        }}
                                                         disabled={!!pendingRequest}
                                                         className="ss-shift-action-btn drop"
                                                     >

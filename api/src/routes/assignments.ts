@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { EngineService } from '../services/engineService';
 import { AuditService } from '../services/auditService';
+import { NotificationService } from '../services/notificationService';
 import { z } from 'zod';
 
 export const assignmentsRouter = Router({ mergeParams: true });
@@ -46,12 +47,12 @@ assignmentsRouter.post('/', requireRole('admin', 'manager'), async (req, res) =>
 
     // Call Constraint Engine
     const evalResult = await EngineService.evaluateConstraints(staffUserId, shiftId);
-    if (!evalResult.eligible) {
+    if (!evalResult.valid) {
       return res.status(400).json({ 
         error: { 
           code: 'CONSTRAINT_VIOLATION', 
           message: 'User is not eligible for this shift', 
-          details: evalResult.reasons 
+          details: evalResult.violations 
         } 
       });
     }
@@ -73,6 +74,12 @@ assignmentsRouter.post('/', requireRole('admin', 'manager'), async (req, res) =>
       null, 
       { assignmentId: newAssignment.id, userId: staffUserId }, 
       req.auth!.userId
+    );
+
+    await NotificationService.notify(
+      staffUserId,
+      'shift_assigned',
+      'You have been assigned to a shift.'
     );
 
     res.status(201).json({ data: newAssignment });
@@ -128,6 +135,12 @@ assignmentsRouter.delete('/:userId', requireRole('admin', 'manager'), async (req
       { assignmentId: targetAssignment.id, userId, status: 'assigned' }, 
       { status: 'dropped' }, 
       req.auth!.userId
+    );
+
+    await NotificationService.notify(
+      userId,
+      'shift_dropped',
+      'You have been dropped from a shift.'
     );
 
     res.json({ success: true, data: { id: targetAssignment.id, status: 'dropped' } });

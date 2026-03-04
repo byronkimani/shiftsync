@@ -5,6 +5,7 @@ import { eq, and, lte, gte } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { NotificationService } from '../services/notificationService';
+import { EngineService } from '../services/engineService';
 import { z } from 'zod';
 
 export const shiftsRouter = Router();
@@ -166,7 +167,7 @@ shiftsRouter.patch('/shifts/:id/publish', requireRole('admin', 'manager'), async
         if (assignment.status === 'assigned') {
            await NotificationService.notify(
              assignment.userId,
-             'shift_published',
+             'schedule_published',
              'A new shift has been published to your schedule.',
              { shiftId: updatedShift.id }
            );
@@ -179,6 +180,38 @@ shiftsRouter.patch('/shifts/:id/publish', requireRole('admin', 'manager'), async
       res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to publish shift' } });
     }
   });
+
+const validateAssignmentSchema = z.object({
+  userId: z.string().uuid()
+});
+
+shiftsRouter.post('/shifts/:id/validate-assignment', requireRole('admin', 'manager'), async (req, res) => {
+  try {
+    const shiftId = req.params.id as string;
+    const parsed = validateAssignmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid payload' } });
+    }
+    const staffUserId = parsed.data.userId;
+
+    const targetShift = await db.query.shifts.findFirst({ where: eq(shifts.id, shiftId) });
+    if (!targetShift) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Shift not found' } });
+
+    // RBAC logic
+    const { role, locationIds } = req.auth!;
+    if (role !== 'admin' && !locationIds.includes(targetShift.locationId)) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Cannot validate shift outside your location' } });
+    }
+
+    const result = await EngineService.evaluateConstraints(staffUserId, shiftId);
+
+    // The result directly contains { valid, violations, warnings, suggestions }
+    res.json({ data: result });
+  } catch (error) {
+    console.error('POST /shifts/:id/validate-assignment error:', error);
+    res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to validate assignment' } });
+  }
+});
 
 shiftsRouter.delete('/shifts/:id', requireRole('admin', 'manager'), async (req, res) => {
   try {

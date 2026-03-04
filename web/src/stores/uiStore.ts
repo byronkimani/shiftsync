@@ -6,6 +6,7 @@ interface UIState {
   activeWeekStart: Date;
   unreadNotificationCount: number;
   staleShiftIds: Set<string>;
+  selectedAssignShiftId: string | null;
 
   // Actions
   setSelectedLocationId: (id: string | null) => void;
@@ -13,6 +14,7 @@ interface UIState {
   setUnreadNotificationCount: (count: number) => void;
   addStaleShiftId: (id: string) => void;
   clearStaleShiftIds: () => void;
+  setSelectedAssignShiftId: (id: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -31,5 +33,8 @@ export const useUIStore = create<UIState>((set) => ({
       return { staleShiftIds: newSet };
   }),
   
-  clearStaleShiftIds: () => set({ staleShiftIds: new Set() })
+  clearStaleShiftIds: () => set({ staleShiftIds: new Set() }),
+  
+  selectedAssignShiftId: null,
+  setSelectedAssignShiftId: (id) => set({ selectedAssignShiftId: id })
 }));
